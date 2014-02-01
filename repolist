@@ -1,0 +1,96 @@
+#!/bin/bash
+#Lists all repositories from a github user or organization
+#Copyright 2014 broodplank.net
+
+#Revision 1
+
+
+if [[ ( $1 = "" ) || ( $1 = "--help" ) || ( $1 = "-help" ) ]]; then
+	echo "usage: repolist [github user]"
+	echo " example: repolist broodplank"
+	exit
+else
+	export GITUSER=${1}
+fi;
+
+echo
+echo "-> Fetching pages..."
+
+for i in `seq 1 100`;
+do
+	wget -q https://github.com/${GITUSER}/repositories?page=${i}
+        if [[ -e repositories?page=1 ]]; then
+		export READVALID=`cat repositories?page=${i} | grep stargazers`;
+	else
+		echo
+		echo "An error has occured while fetching the repositories!"
+		echo "Make sure you enter a valid Github user with repositories"
+		exit
+	fi;
+	if [[ $READVALID = "" ]]; then
+	  export PAGE="$(( $i - 1 ))"
+	  echo "- Repositories discovered until page ${PAGE}"
+	  break;
+        fi;
+done    
+echo "--> Done!"
+
+echo
+echo "-> Manipulating raw HTML"
+
+for i in `seq 1 $PAGE`;
+do
+	echo "- Working on page ${i}"
+	echo "-- Grepping repositories from page"
+	export READ=`cat repositories\?page\=${i} | grep '/stargazers" title="Stargazers">'`
+        echo $READ > fileout${i}
+	echo "-- Fixing incorrect links"
+        export SED=`sed -i 's|<a href="|https://www.github.com|g' ${PWD}/fileout${i}`
+	echo "-- Removing left overs"
+	export SED2=`sed -i 's|/stargazers" title="Stargazers">||g' ${PWD}/fileout${i}`
+done    
+echo "--> Done!"
+
+rm -f links
+
+echo 
+echo "-> Merging results of all pages"
+for i in `seq 1 $PAGE`;
+do
+		echo "- Merging page ${i}"
+		echo `cat fileout${i}` >> links
+done  
+echo "--> Done!"
+
+sed -i 's| |\n|g' ${PWD}/links
+export PAGE1="$(( $PAGE + 1 ))"
+
+echo
+echo "-> Removing temp files"
+for i in `seq 1 $PAGE1`;
+do
+	rm -f repositories?page=${i}
+	rm -f fileout${i}
+done  
+echo "--> Done!"
+echo
+export LINECOUNT=`cat ${PWD}/links | wc -l`
+echo "---> Total repositories found: ${LINECOUNT}"
+echo "---> The links can be found in the 'links' file in ${PWD}"
+
+echo
+read -p "Generate automatic repository clone script? [y/n]: " choice
+if [[ $choice != "n" ]]; then
+	rm -f ${PWD}/autoclone.sh
+	echo "#!/bin/sh" > ${PWD}/autoclone.sh
+	cat ${PWD}/links | \
+	while read CMD; do
+	    echo "git clone $CMD" >> ${PWD}/autoclone.sh
+	done
+	chmod +x ${PWD}/autoclone.sh
+	echo "Script generation completed, output is the 'autoclone.sh' file in ${PWD}"
+fi; 
+	
+
+
+
